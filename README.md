@@ -12,7 +12,7 @@ A python module to download and upload from [gigafile](https://gigafile.nu/).
 ### Import
     from gfile import GFile
 ### Download
-    url, cookies = GFile('https://XX.gigafile.nu/YYY').direct_download()
+    url, cookies = GFile('https://XX.gigafile.nu/YYY').get_download()
     # or
     filename = GFile('https://XX.gigafile.nu/YYY').download()
 ### Upload
