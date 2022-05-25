@@ -1,4 +1,5 @@
 A python module to download and upload from [gigafile](https://gigafile.nu/).
+This is a personal tool as you may come across errors and bugs so feel free to add an issue.
 
 # Install
 
