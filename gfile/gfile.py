@@ -129,7 +129,8 @@ class GFile:
     def get_download(self):
         _data: dict[str, str] = self.data
         if not os.path.exists(self.uri):
-            if data := re.search(r'^https?:\/\/\d+?\.gigafile\.nu\/([a-z0-9-]+)$', self.uri):
+            data = re.search(r'^https?:\/\/\d+?\.gigafile\.nu\/([a-z0-9-]+)$', self.uri)
+            if data:
                 _data = {'url': self.uri, 'filename': data[1]}
             else:
                 raise ValueError('URL invalid')
