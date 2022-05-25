@@ -139,12 +139,13 @@ class GFile:
         sess.get(_data['url'])
         return (_data['url'].replace(_data['filename'], 'download.php?file='+_data['filename']), sess.cookies)
 
-    def download(self, copy_size, progress = True):
+    def download(self, copy_size, progress=True, filename=None):
         url, cookies = self.get_download()
-        headers = r.head(url, cookies=cookies).headers
-        filesize = int(headers['Content-Length'])
-        filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1]
-        filename = re.sub(r'\\|\/|:|\*|\?|"|<|>|\|', '_', filename)
+        if not filename:
+            headers = r.head(url, cookies=cookies).headers
+            filesize = int(headers['Content-Length'])
+            filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1]
+            filename = re.sub(r'\\|\/|:|\*|\?|"|<|>|\|', '_', filename)
         if progress:
             pbar = tqdm(total=filesize, unit='B', unit_scale=True, desc=filename)
             
@@ -154,3 +155,4 @@ class GFile:
                 for chunk in req.iter_content(chunk_size=copy_size):
                     f.write(chunk)
                     if pbar: pbar.update(len(chunk))
+        return filename

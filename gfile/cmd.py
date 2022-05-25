@@ -20,6 +20,7 @@ def main():
     parser.add_argument('action', type=Action, choices=list(Action), help='upload or download')
     parser.add_argument('uri', help='filename to upload or url to download')
     parser.add_argument('-p', '--hide-progress', dest='progress', action='store_false', default=True, help='hide progress bar')
+    parser.add_argument('-o', '--output', dest='output file', type=str, default=None, help='hide progress bar')
     parser.add_argument('-n', '--thread-num', dest='thread_num', default=int(4), type=int, help='number of threads used for upload (can incease speed)')
     parser.add_argument('-s', '--chunk-size', dest='chunk_size', type=int, help='gigafile allowed chunk size per upload', default=1024*1024*100)
     parser.add_argument('-m', '--copy-size', dest='chunk_copy_size', type=int, help='specifies size to copy the main file into pieces (the size loaded in RAM)', default=1024*1024)
