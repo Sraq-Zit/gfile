@@ -3,8 +3,22 @@ A python module to download and upload from [gigafile](https://gigafile.nu/).
 # Install
 
     $ python setup.py install --user
+    or
+    $ pip install git+https://github.com/Sraq-Zit/gfile.git
 
 # Usage
+
+## Module
+### Import
+    from gfile import GFile
+### Download
+    url, cookies = GFile('https://XX.gigafile.nu/YYY').direct_download()
+    # or
+    filename = GFile('https://XX.gigafile.nu/YYY').download()
+### Upload
+    url = GFile('path/to/file', progress=True).upload().get_download_page()
+
+## CLI
 
     $ gfile upload path/to/file
 
