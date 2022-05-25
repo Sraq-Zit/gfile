@@ -36,9 +36,11 @@ class GFile:
                     self.pbar.desc = chunk_id
                 with tempfile.NamedTemporaryFile() as f:
                     i = 0
-                    while i < self.chunk_size and (chunk := ff.read(self.chunk_copy_size)):
+                    chunk = ff.read(self.chunk_copy_size)
+                    while i < self.chunk_size and chunk:
                         f.write(chunk)
                         i += self.chunk_copy_size
+                        chunk = ff.read(self.chunk_copy_size)
 
                     f.seek(0)
 
