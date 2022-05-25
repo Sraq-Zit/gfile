@@ -11,7 +11,7 @@ A python module to download and upload from [gigafile](https://gigafile.nu/).
     $ gfile download https://66.gigafile.nu/0320-b36ec21d4a56b143537e12df7388a5367
 
     $ gfile -h
-    usage: Gigafile [-h] [-p] [-n THREAD_NUM] [-s CHUNK_SIZE] [-m CHUNK_COPY_SIZE] {download,upload} uri
+    usage: Gfile [-h] [-p] [-n THREAD_NUM] [-s CHUNK_SIZE] [-m CHUNK_COPY_SIZE] {download,upload} uri
 
     positional arguments:
     {download,upload}     Upload or download
@@ -23,7 +23,7 @@ A python module to download and upload from [gigafile](https://gigafile.nu/).
     -n THREAD_NUM, --thread-num THREAD_NUM
                             Number of threads used for upload (can incease speed)
     -s CHUNK_SIZE, --chunk-size CHUNK_SIZE
-                            Gigafile allowed chunk size per upload
+                     allowed chunk size per upload
     -m CHUNK_COPY_SIZE, --copy-size CHUNK_COPY_SIZE
                             Specifies size to copy the main file into pieces (the size loaded in RAM)
 

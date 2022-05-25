@@ -5,8 +5,8 @@ import re
 
 from tqdm import tqdm
 import requests as r
-if __name__ == "__main__": from gigafile import GigaFile
-else:                      from .gigafile import GigaFile
+if __name__ == "__main__": from gfile import GFile
+else:                      from .gfile import GFile
 
 class Action(Enum):
     download = 'download'
@@ -17,7 +17,7 @@ class Action(Enum):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog='Gigafile')
+    parser = argparse.ArgumentParser(prog='Gfile')
     parser.add_argument('action', type=Action, choices=list(Action), help='upload or download')
     parser.add_argument('uri', help='filename to upload or url to download')
     parser.add_argument('-p', '--hide-progress', dest='progress', action='store_false', default=True, help='hide progress bar')
@@ -27,7 +27,7 @@ def main():
 
     args = parser.parse_args()
 
-    gf = GigaFile(**args.__dict__)
+    gf = GFile(**args.__dict__)
     if args.action == Action.download:
         pbar = None
         url, cookies = gf.direct_download()

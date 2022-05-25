@@ -12,7 +12,7 @@ from requests_toolbelt.multipart import encoder
 from tqdm import tqdm
 
 
-class GigaFile:
+class GFile:
 
     def __init__(self, uri, progress=False, thread_num=4, chunk_size=1024*1024*100, chunk_copy_size=1024*1024, **kwargs) -> None:
         self.uri = uri
