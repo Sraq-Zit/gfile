@@ -7,6 +7,7 @@ from threading import Lock, Thread
 import uuid
 import requests
 from requests_toolbelt import MultipartEncoderMonitor
+import requests as r
 
 from requests_toolbelt.multipart import encoder
 from tqdm import tqdm
@@ -123,7 +124,7 @@ class GFile:
     def get_download_page(self): return self.data and self.data['url']
     def get_file_id(self): return self.data and self.data['filename']
 
-    def direct_download(self):
+    def get_download(self):
         _data: dict[str, str] = self.data
         if not os.path.exists(self.uri):
             if data := re.search(r'^https?:\/\/\d+?\.gigafile\.nu\/([a-z0-9-]+)$', self.uri):
@@ -137,3 +138,19 @@ class GFile:
         sess = requests.Session()
         sess.get(_data['url'])
         return (_data['url'].replace(_data['filename'], 'download.php?file='+_data['filename']), sess.cookies)
+
+    def download(self, copy_size, progress = True):
+        url, cookies = self.get_download()
+        headers = r.head(url, cookies=cookies).headers
+        filesize = int(headers['Content-Length'])
+        filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1]
+        filename = re.sub(r'\\|\/|:|\*|\?|"|<|>|\|', '_', filename)
+        if progress:
+            pbar = tqdm(total=filesize, unit='B', unit_scale=True, desc=filename)
+            
+        with open(filename, 'wb') as f:
+            with r.get(url, cookies=cookies, stream=True) as req:
+                req.raise_for_status()
+                for chunk in req.iter_content(chunk_size=copy_size):
+                    f.write(chunk)
+                    if pbar: pbar.update(len(chunk))
