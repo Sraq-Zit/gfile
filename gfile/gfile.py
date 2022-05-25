@@ -142,7 +142,7 @@ class GFile:
         sess.get(_data['url'])
         return (_data['url'].replace(_data['filename'], 'download.php?file='+_data['filename']), sess.cookies)
 
-    def download(self, copy_size, progress=True, filename=None):
+    def download(self, copy_size=1024*1024, progress=True, filename=None):
         url, cookies = self.get_download()
         if not filename:
             headers = r.head(url, cookies=cookies).headers
