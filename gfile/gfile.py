@@ -1,15 +1,13 @@
 import concurrent.futures
 import re
-import tempfile
 import uuid
 from math import ceil
 from pathlib import Path
-
-from requests_toolbelt.multipart import encoder
-from requests_toolbelt.streaming_iterator import StreamingIterator
+import io
+from requests_toolbelt import MultipartEncoder, StreamingIterator
 from tqdm import tqdm
 import time
-
+from urllib.parse import unquote
 
 def requests_retry_session(
     retries=5,
@@ -41,10 +39,7 @@ def split_file(input_file, out, target_size=None, start=0, chunk_copy_size=1024*
     if target_size is None:
         output_size = input_size - start
     else:
-        output_size = min( target_size, input_size - start )
-
-    # print('input_size:', input_size)
-    # print('output_size:', output_size)
+        output_size = min( target_size, input_size - start)
 
     with open(input_file, 'rb') as f:
         f.seek(start)
@@ -74,12 +69,24 @@ class GFile:
         self.cookies = None
         self.current_chunk = 0
 
-    def upload_chunk(self, chunk_no, chunks):
 
-        with tempfile.NamedTemporaryFile(dir='.') as f:
+    def upload_chunk(self, chunk_no, chunks):
+        # import tracemalloc
+
+        # tracemalloc.start()
+        # prev = tracemalloc.get_traced_memory()[0]
+
+        # def memo(text=''):
+        #     nonlocal prev
+
+        #     current = tracemalloc.get_traced_memory()[0]
+        #     print(f'Memory change at {text}', current - prev)
+        #     prev = current
+
+        # memo('Before load')
+        with io.BytesIO() as f:
             split_file(self.uri, f, self.chunk_size, start=chunk_no * self.chunk_size, chunk_copy_size=self.chunk_copy_size)
             chunk_size = f.tell()
-            # print('chunk size:', chunk_size)
             f.seek(0)
             fields = {
                 "id": self.token,
@@ -89,18 +96,21 @@ class GFile:
                 "lifetime": "100",
                 "file": ("blob", f, "application/octet-stream"),
             }
-            form = encoder.MultipartEncoder(fields)
+            form_data = MultipartEncoder(fields)
             headers = {
-                "content-type": form.content_type,
+                "content-type": form_data.content_type,
             }
-            form_str = form.to_string()
+            # convert the form-data into a binary string, this way we can control throttle its read() behavior
+            form_data_binary = form_data.to_string()
+            del form_data
 
-        size = len(form_str)
+        size = len(form_data_binary)
+
         def gen():
             offset = 0
             while True:
                 if offset < size:
-                    yield form_str[offset:offset+1024]
+                    yield form_data_binary[offset:offset+1024]
                     offset += 1024
                 else:
                     if chunk_no != self.current_chunk:
@@ -143,7 +153,6 @@ class GFile:
 
         self.session = requests_retry_session()
         self.server = re.search(r'var server = "(.+?)"', self.session.get('https://gigafile.nu/').text)[1]
-
 
         # upload the first chunk
         self.upload_chunk(0, chunks)
@@ -203,10 +212,13 @@ class GFile:
         if not filename:
             headers = requests_retry_session().head(url, cookies=cookies).headers
             filesize = int(headers['Content-Length'])
-            filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1]
+            if "UTF-8''" in headers['Content-Disposition']:
+                filename = unquote(headers['Content-Disposition'].split("UTF-8''")[-1])
+            else:
+                filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1].encode('iso8859-1','ignore').decode('utf-8', 'ignore')
             filename = re.sub(r'\\|\/|:|\*|\?|"|<|>|\|', '_', filename)
         if progress:
-            pbar = tqdm(total=filesize, unit='B', unit_scale=True, desc=filename)
+            pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=filename, ncols=100)
 
         with open(filename, 'wb') as f:
             with requests_retry_session().get(url, cookies=cookies, stream=True) as req:
