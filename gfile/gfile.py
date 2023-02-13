@@ -74,13 +74,9 @@ class GFile:
         self.cookies = None
         self.current_chunk = 0
 
-
     def upload_chunk(self, chunk_no, chunks):
 
-        chunk_id = f'chunk {chunk_no}'
-        if self.pbar:
-            self.pbar.desc = chunk_id
-        with tempfile.NamedTemporaryFile() as f:
+        with tempfile.NamedTemporaryFile(dir='.') as f:
             split_file(self.uri, f, self.chunk_size, start=chunk_no * self.chunk_size, chunk_copy_size=self.chunk_copy_size)
             chunk_size = f.tell()
             # print('chunk size:', chunk_size)
@@ -93,42 +89,44 @@ class GFile:
                 "lifetime": "100",
                 "file": ("blob", f, "application/octet-stream"),
             }
-
             form = encoder.MultipartEncoder(fields)
-            form_str = form.to_string()
-            size = len(form_str)
-            def gen():
-                offset = 0
-                while True:
-                    if offset < size:
-                        yield form_str[offset:offset+1024]
-                        offset += 1024
-                    else:
-                        if chunk_no != self.current_chunk:
-                            time.sleep(0.1)
-                        else:
-                            break
-
-            streamer = StreamingIterator(size, gen())
             headers = {
                 "content-type": form.content_type,
             }
-            # print("Session gfsid:", self.session.cookies['gfsid'])
-            # print(f'Updating chunk {chunk_no + 1} out of {chunks} chunks')
-            resp = self.session.post(f"https://{self.server}/upload_chunk.php", data=streamer, headers=headers)
-            self.current_chunk += 1
-            if self.pbar:
-                self.pbar.update(chunk_size)
-            # print("Session gfsid after uploading:", self.session.cookies['gfsid'])
-            # print('resp', resp.cookies.__dict__)
-            resp_data = resp.json()
-            # print(resp_data)
-            if 'url' in resp_data:
-                self.data = resp_data
-            if 'status' not in resp_data or resp_data['status']:
-                print(resp_data)
-                self.failed = True
+            form_str = form.to_string()
 
+        size = len(form_str)
+        def gen():
+            offset = 0
+            while True:
+                if offset < size:
+                    yield form_str[offset:offset+1024]
+                    offset += 1024
+                else:
+                    if chunk_no != self.current_chunk:
+                        time.sleep(0.01)
+                    else:
+                        time.sleep(0.1)
+                        break
+
+        streamer = StreamingIterator(size, gen())
+
+        # print("Session gfsid:", self.session.cookies['gfsid'])
+        # print(f'Updating chunk {chunk_no + 1} out of {chunks} chunks')
+        resp = self.session.post(f"https://{self.server}/upload_chunk.php", data=streamer, headers=headers)
+        self.current_chunk += 1
+        if self.pbar:
+            self.pbar.desc = f'Finished {chunk_no + 1}/{chunks} chunks'
+            self.pbar.update(chunk_size)
+        # print("Session gfsid after uploading:", self.session.cookies['gfsid'])
+        # print('resp', resp.cookies.__dict__)
+        resp_data = resp.json()
+        # print(resp_data)
+        if 'url' in resp_data:
+            self.data = resp_data
+        if 'status' not in resp_data or resp_data['status']:
+            print(resp_data)
+            self.failed = True
 
     def upload(self):
         self.token = uuid.uuid1().hex
@@ -152,13 +150,20 @@ class GFile:
 
         # for i in range(1, chunks-1):
         #     self.upload_chunk(i, chunks)
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as ex:
-            for i in range(1, chunks - 1):
-                ex.submit(self.upload_chunk, i, chunks)
-        if self.failed:
-            print('Failed!')
-            return
+            futures = {ex.submit(self.upload_chunk, i, chunks): i for i in range(1, chunks - 1)}
+            try:
+                for future in concurrent.futures.as_completed(futures):
+                    if self.failed:
+                        print('Failed!')
+                        for future in futures:
+                            future.cancel()
+                        return
+            except KeyboardInterrupt:
+                print('\nUser cancelled the operation.')
+                for future in futures:
+                    future.cancel()
+                return
 
         if chunks > 1:
             print('\nupload the last chunk in single thread')
