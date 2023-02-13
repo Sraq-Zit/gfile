@@ -1,9 +1,10 @@
 
 import argparse
 from enum import Enum
-import re
+from datetime import datetime
+from pathlib import Path
+import math
 
-from tqdm import tqdm
 if __name__ == "__main__": from gfile import GFile
 else:                      from .gfile import GFile
 
@@ -12,6 +13,15 @@ class Action(Enum):
     upload = 'upload'
     def __str__(self):
         return self.value
+
+
+def convert_size(size_bytes):
+   if size_bytes == 0:
+       return "0B"
+   units = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+   i = int(math.floor(math.log(size_bytes, 1024)))
+   p = math.pow(1024, i)
+   return f"{size_bytes/p:.02f} {units[i]}"
 
 def main():
     parser = argparse.ArgumentParser(prog='Gfile')
@@ -30,7 +40,9 @@ def main():
         gf.download(args.chunk_copy_size, args.progress)
 
     else:
-        print(gf.upload().get_download_page())
+        url = gf.upload().get_download_page()
+        print(f"Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, filename: {gf.uri}, size: {convert_size(Path(gf.uri).stat().st_size)}")
+        print(url)
 
 if __name__ == "__main__":
     main()

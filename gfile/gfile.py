@@ -175,7 +175,7 @@ class GFile:
                 return
 
         if chunks > 1:
-            print('\nupload the last chunk in single thread')
+            # print('\nupload the last chunk in single thread')
             self.upload_chunk(chunks - 1, chunks)
 
         if self.pbar:
