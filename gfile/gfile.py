@@ -6,6 +6,7 @@ from math import ceil
 from pathlib import Path
 
 from requests_toolbelt.multipart import encoder
+from requests_toolbelt.streaming_iterator import StreamingIterator
 from tqdm import tqdm
 import time
 
@@ -71,6 +72,7 @@ class GFile:
         self.session = requests_retry_session()
         self.index = 0
         self.cookies = None
+        self.current_chunk = 0
 
 
     def upload_chunk(self, chunk_no, chunks):
@@ -91,14 +93,30 @@ class GFile:
                 "lifetime": "100",
                 "file": ("blob", f, "application/octet-stream"),
             }
-            form = encoder.MultipartEncoder(fields)
 
+            form = encoder.MultipartEncoder(fields)
+            form_str = form.to_string()
+            size = len(form_str)
+            def gen():
+                offset = 0
+                while True:
+                    if offset < size:
+                        yield form_str[offset:offset+1024]
+                        offset += 1024
+                    else:
+                        if chunk_no != self.current_chunk:
+                            time.sleep(0.1)
+                        else:
+                            break
+
+            streamer = StreamingIterator(size, gen())
             headers = {
                 "content-type": form.content_type,
             }
             # print("Session gfsid:", self.session.cookies['gfsid'])
             # print(f'Updating chunk {chunk_no + 1} out of {chunks} chunks')
-            resp = self.session.post(f"https://{self.server}/upload_chunk.php", headers=headers, data=form)
+            resp = self.session.post(f"https://{self.server}/upload_chunk.php", data=streamer, headers=headers)
+            self.current_chunk += 1
             if self.pbar:
                 self.pbar.update(chunk_size)
             # print("Session gfsid after uploading:", self.session.cookies['gfsid'])
@@ -120,24 +138,31 @@ class GFile:
         assert Path(self.uri).exists()
         size = Path(self.uri).stat().st_size
         chunks = ceil(size / self.chunk_size)
-        # print(f'Total chunks: {chunks}')
+        print(f'Total chunks: {chunks}')
+
         if self.progress:
-            self.pbar = tqdm(total=size, unit="B", unit_scale=True, leave=False, unit_divisor=1024)
+            self.pbar = tqdm(total=size, unit="B", unit_scale=True, leave=False, unit_divisor=1024, ncols=100)
+
         self.session = requests_retry_session()
         self.server = re.search(r'var server = "(.+?)"', self.session.get('https://gigafile.nu/').text)[1]
 
+
         # upload the first chunk
         self.upload_chunk(0, chunks)
-        time.sleep(1)
+
+        # for i in range(1, chunks-1):
+        #     self.upload_chunk(i, chunks)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as ex:
             for i in range(1, chunks - 1):
                 ex.submit(self.upload_chunk, i, chunks)
         if self.failed:
             print('Failed!')
             return
-        time.sleep(1)
-        print('upload the last chunk')
-        self.upload_chunk(chunks - 1, chunks)
+
+        if chunks > 1:
+            print('\nupload the last chunk in single thread')
+            self.upload_chunk(chunks - 1, chunks)
 
         if self.pbar:
             self.pbar.close()
