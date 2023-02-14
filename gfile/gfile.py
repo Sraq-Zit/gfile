@@ -1,14 +1,16 @@
 import concurrent.futures
+import io
+import math
 import re
+import time
 import uuid
+from datetime import datetime
 from math import ceil
 from pathlib import Path
-import io
+from urllib.parse import unquote
+
 from requests_toolbelt import MultipartEncoder, StreamingIterator
 from tqdm import tqdm
-import time
-from urllib.parse import unquote
-import math
 
 
 def bytes_to_size_str(bytes):
@@ -23,11 +25,10 @@ def bytes_to_size_str(bytes):
 def size_str_to_bytes(size_str):
     if isinstance(size_str, int):
         return size_str
-    m = re.search(r'^(?P<num>\d+) ?(?P<unit>[KMGTPEZY]i?B)?$', size_str, re.IGNORECASE)
+    m = re.search(r'^(?P<num>\d+) ?((?P<unit>[KMGTPEZY]?)(iB|B)?)$', size_str, re.IGNORECASE)
     assert m
-    units = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
-    unit = m['unit'] or 'B'
-    unit = unit.upper().replace('I', '')
+    units = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y")
+    unit = (m['unit'] or 'B').upper()
     return int(math.pow(1024, units.index(unit)) * int(m['num']))
 
 
@@ -168,7 +169,7 @@ class GFile:
         assert Path(self.uri).exists()
         size = Path(self.uri).stat().st_size
         chunks = ceil(size / self.chunk_size)
-        print(f'Total chunks: {chunks}')
+        print(f'Filesize {bytes_to_size_str(size)}, chunk size: {bytes_to_size_str(self.chunk_size)}, total chunks: {chunks}')
 
         if self.progress:
             self.pbar = tqdm(total=size, unit="B", unit_scale=True, leave=False, unit_divisor=1024, ncols=100)
@@ -202,16 +203,17 @@ class GFile:
 
         if self.pbar: self.pbar.close()
         if 'url' not in self.data:
-            print('Something went wrong', self.data)
-        else:
-            self.get_download_page()
+            print('Something went wrong. Upload failed.', self.data)
+        return self # for chain
 
 
     def get_download_page(self):
-        from datetime import datetime
+        if not self.data or not 'url' in self.data:
+            return
         f = Path(self.uri)
         print(f"Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, filename: {f.name}, size: {bytes_to_size_str(f.stat().st_size)}")
         print(self.data['url'])
+        return self.data['url']
 
 
     def download(self, filename=None):

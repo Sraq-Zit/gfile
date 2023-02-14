@@ -27,7 +27,7 @@ def main():
     if args.action == Action.download:
         gf.download(args.output)
     else:
-        gf.upload()
+        gf.upload().get_download_page()
 
 if __name__ == "__main__":
     main()
