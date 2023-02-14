@@ -8,6 +8,28 @@ from requests_toolbelt import MultipartEncoder, StreamingIterator
 from tqdm import tqdm
 import time
 from urllib.parse import unquote
+import math
+
+
+def bytes_to_size_str(bytes):
+   if bytes == 0:
+       return "0B"
+   units = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+   i = int(math.floor(math.log(bytes, 1024)))
+   p = math.pow(1024, i)
+   return f"{bytes/p:.02f} {units[i]}"
+
+
+def size_str_to_bytes(size_str):
+    if isinstance(size_str, int):
+        return size_str
+    m = re.search(r'^(?P<num>\d+) ?(?P<unit>[KMGTPEZY]i?B)?$', size_str, re.IGNORECASE)
+    assert m
+    units = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+    unit = m['unit'] or 'B'
+    unit = unit.upper().replace('I', '')
+    return int(math.pow(1024, units.index(unit)) * int(m['num']))
+
 
 def requests_retry_session(
     retries=5,
@@ -55,11 +77,10 @@ def split_file(input_file, out, target_size=None, start=0, chunk_copy_size=1024*
             out.write(chunk)
 
 class GFile:
-
     def __init__(self, uri, progress=False, thread_num=4, chunk_size=1024*1024*10, chunk_copy_size=1024*1024, **kwargs) -> None:
         self.uri = uri
-        self.chunk_size = chunk_size
-        self.chunk_copy_size = chunk_copy_size
+        self.chunk_size = size_str_to_bytes(chunk_size)
+        self.chunk_copy_size = size_str_to_bytes(chunk_copy_size)
         self.thread_num=thread_num
         self.progress = progress
         self.data = None
@@ -100,7 +121,7 @@ class GFile:
             headers = {
                 "content-type": form_data.content_type,
             }
-            # convert the form-data into a binary string, this way we can control throttle its read() behavior
+            # convert the form-data into a binary string, this way we can control/throttle its read() behavior
             form_data_binary = form_data.to_string()
             del form_data
 
@@ -138,6 +159,7 @@ class GFile:
             print(resp_data)
             self.failed = True
 
+
     def upload(self):
         self.token = uuid.uuid1().hex
         self.pbar = None
@@ -157,8 +179,7 @@ class GFile:
         # upload the first chunk
         self.upload_chunk(0, chunks)
 
-        # for i in range(1, chunks-1):
-        #     self.upload_chunk(i, chunks)
+        # upload second to second last chunk(s)
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.thread_num) as ex:
             futures = {ex.submit(self.upload_chunk, i, chunks): i for i in range(1, chunks - 1)}
             try:
@@ -174,56 +195,51 @@ class GFile:
                     future.cancel()
                 return
 
+        # upload last chunk if not already
         if chunks > 1:
             # print('\nupload the last chunk in single thread')
             self.upload_chunk(chunks - 1, chunks)
 
-        if self.pbar:
-            self.pbar.close()
+        if self.pbar: self.pbar.close()
         if 'url' not in self.data:
-            print('something went wrong', self.data)
-        # except KeyboardInterrupt:
-        #     self.pbar.close()
-        #     self.failed = True
-        #     print('Aborted! cleaning...')
-        return self
+            print('Something went wrong', self.data)
+        else:
+            self.get_download_page()
 
-    def get_download_page(self): return self.data and self.data['url']
-    def get_file_id(self): return self.data and self.data['filename']
 
-    def get_download(self):
-        _data: dict[str, str] = self.data
-        if not Path(self.uri).exists():
-            data = re.search(r'^https?:\/\/\d+?\.gigafile\.nu\/([a-z0-9-]+)$', self.uri)
-            if data:
-                _data = {'url': self.uri, 'filename': data[1]}
-            else:
-                raise ValueError('URL invalid')
+    def get_download_page(self):
+        from datetime import datetime
+        f = Path(self.uri)
+        print(f"Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}, filename: {f.name}, size: {bytes_to_size_str(f.stat().st_size)}")
+        print(self.data['url'])
 
-        if not _data:
-            return ValueError('You specified no file to upload nor to download')
 
-        sess = requests_retry_session()
-        sess.get(_data['url'])
-        return (_data['url'].replace(_data['filename'], 'download.php?file='+_data['filename']), sess.cookies)
-
-    def download(self, copy_size=1024*1024, progress=True, filename=None):
-        url, cookies = self.get_download()
-        if not filename:
-            headers = requests_retry_session().head(url, cookies=cookies).headers
-            filesize = int(headers['Content-Length'])
-            if "UTF-8''" in headers['Content-Disposition']:
-                filename = unquote(headers['Content-Disposition'].split("UTF-8''")[-1])
-            else:
-                filename = re.search(r'filename="(.+?)";', headers['Content-Disposition'])[1].encode('iso8859-1','ignore').decode('utf-8', 'ignore')
-            filename = re.sub(r'\\|\/|:|\*|\?|"|<|>|\|', '_', filename)
-        if progress:
-            pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=filename, ncols=100)
-
-        with open(filename, 'wb') as f:
-            with requests_retry_session().get(url, cookies=cookies, stream=True) as req:
-                req.raise_for_status()
-                for chunk in req.iter_content(chunk_size=copy_size):
+    def download(self, filename=None):
+        m = re.search(r'^https?:\/\/\d+?\.gigafile\.nu\/([a-z0-9-]+)$', self.uri)
+        if not m:
+            print('Invalid URL.')
+            return
+        self.session.get(self.uri) # setup cookie
+        file_id = m[1]
+        download_url = self.uri.replace(file_id, 'download.php?file=' + file_id)
+        with self.session.get(download_url, stream=True) as r:
+            r.raise_for_status()
+            filesize = int(r.headers['Content-Length'])
+            if not filename:
+                content_disp = r.headers['Content-Disposition']
+                if "UTF-8''" in content_disp:
+                    filename = unquote(content_disp.split("UTF-8''")[-1])
+                else:
+                    filename = re.search(r'filename="(.+?)";', content_disp)[1].encode('iso8859-1','ignore').decode('utf-8', 'ignore')
+                filename = re.sub(r'[\\/:*?"<>|]', '_', filename) # only sanitize remote filename. User provided are on users' own.
+            if self.progress:
+                self.pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=filename, ncols=100)
+            with open(filename, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=self.chunk_copy_size):
                     f.write(chunk)
-                    if pbar: pbar.update(len(chunk))
+                    if self.pbar: self.pbar.update(len(chunk))
+        if self.pbar: self.pbar.close()
+
+        filesize_downloaded = Path(filename).stat().st_size
+        print(f'Filesize check: expected: {filesize}; actual: {filesize_downloaded}. {"Succeeded." if filesize==filesize_downloaded else "Failed!"}')
         return filename
