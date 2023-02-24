@@ -5,6 +5,7 @@ __pycache__/
 .vscode/
 
 test*
+note.txt
 
 # C extensions
 *.so

@@ -1,4 +1,5 @@
 import concurrent.futures
+import functools
 import io
 import math
 import re
@@ -9,8 +10,11 @@ from math import ceil
 from pathlib import Path
 from urllib.parse import unquote
 
+import requests
+from requests.adapters import HTTPAdapter
 from requests_toolbelt import MultipartEncoder, StreamingIterator
 from tqdm import tqdm
+from urllib3.util.retry import Retry
 
 
 def bytes_to_size_str(bytes):
@@ -38,10 +42,6 @@ def requests_retry_session(
     status_forcelist=None, # (500, 502, 504)
     session=None,
 ):
-    import requests
-    from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
-
     session = session or requests.Session()
     retry = Retry(
         total=retries,
@@ -77,8 +77,9 @@ def split_file(input_file, out, target_size=None, start=0, chunk_copy_size=1024*
             size += len(chunk)
             out.write(chunk)
 
+
 class GFile:
-    def __init__(self, uri, progress=False, thread_num=4, chunk_size=1024*1024*10, chunk_copy_size=1024*1024, **kwargs) -> None:
+    def __init__(self, uri, progress=False, thread_num=4, chunk_size=1024*1024*10, chunk_copy_size=1024*1024, timeout=10, **kwargs) -> None:
         self.uri = uri
         self.chunk_size = size_str_to_bytes(chunk_size)
         self.chunk_copy_size = size_str_to_bytes(chunk_copy_size)
@@ -86,26 +87,14 @@ class GFile:
         self.progress = progress
         self.data = None
         self.pbar = None
+        self.timeout = timeout
         self.session = requests_retry_session()
+        self.session.request = functools.partial(self.session.request, timeout=self.timeout)
         self.cookies = None
         self.current_chunk = 0
 
 
     def upload_chunk(self, chunk_no, chunks):
-        # import tracemalloc
-
-        # tracemalloc.start()
-        # prev = tracemalloc.get_traced_memory()[0]
-
-        # def memo(text=''):
-        #     nonlocal prev
-
-        #     current = tracemalloc.get_traced_memory()[0]
-        #     print(f'Memory change at {text}', current - prev)
-        #     prev = current
-
-        # memo('Before load')
-
         bar = self.pbar[chunk_no % self.thread_num] if self.pbar else None
         with io.BytesIO() as f:
             split_file(self.uri, f, self.chunk_size, start=chunk_no * self.chunk_size, chunk_copy_size=self.chunk_copy_size)
@@ -149,17 +138,19 @@ class GFile:
                     else:
                         time.sleep(0.1)
                         break
+        while True:
+            try:
+                streamer = StreamingIterator(size, gen())
+                resp = self.session.post(f"https://{self.server}/upload_chunk.php", data=streamer, headers=headers)
+            except Exception as ex:
+                print(ex)
+                print('Retrying...')
+            else:
+                break
 
-        streamer = StreamingIterator(size, gen())
-
-        # print("Session gfsid:", self.session.cookies['gfsid'])
-        # print(f'Updating chunk {chunk_no + 1} out of {chunks} chunks')
-        resp = self.session.post(f"https://{self.server}/upload_chunk.php", data=streamer, headers=headers)
-        self.current_chunk += 1
-        # print("Session gfsid after uploading:", self.session.cookies['gfsid'])
-        # print('resp', resp.cookies.__dict__)
         resp_data = resp.json()
-        # print(resp_data)
+        self.current_chunk += 1
+
         if 'url' in resp_data:
             self.data = resp_data
         if 'status' not in resp_data or resp_data['status']:
@@ -180,7 +171,7 @@ class GFile:
             self.pbar = []
             for i in range(self.thread_num):
                 self.pbar.append(tqdm(total=size, unit="B", unit_scale=True, leave=False, unit_divisor=1024, ncols=100, position=i))
-        self.session = requests_retry_session()
+
         self.server = re.search(r'var server = "(.+?)"', self.session.get('https://gigafile.nu/').text)[1]
 
         # upload the first chunk to set cookies properly.
