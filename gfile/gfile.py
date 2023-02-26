@@ -236,7 +236,8 @@ class GFile:
                     filename = re.search(r'filename="(.+?)";', content_disp)[1].encode('iso8859-1','ignore').decode('utf-8', 'ignore')
                 filename = re.sub(r'[\\/:*?"<>|]', '_', filename) # only sanitize remote filename. User provided ones are on users' own.
             if self.progress:
-                self.pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=filename)
+                desc = filename if len(filename) <= 20 else filename[0:11] + '..' + filename[-7:]
+                self.pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=desc)
             with open(filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=self.chunk_copy_size):
                     f.write(chunk)
