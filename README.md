@@ -1,11 +1,5 @@
 A python module to download and upload from [gigafile](https://gigafile.nu/).
 
-A major update from [the original](https://github.com/Sraq-Zit/gfile). Highlights:
-
-* Fixed multi-thread uploading (and made sure each threads finish in order so the final file is not broken)
-* Fixed download filename issue
-* Some refactoring and QoL changes.
-
 # Install
     $ python setup.py install --user
 or
