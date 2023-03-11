@@ -4,7 +4,7 @@ A python module to download and upload from [gigafile](https://gigafile.nu/).
     $ python setup.py install --user
 or
 
-    $ pip install git+https://github.com/fireattack/gfile.git
+    $ pip install git+https://github.com/Sraq-Zit/gfile.git -U
 
 # Usage
 ## Module
