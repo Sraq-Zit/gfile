@@ -32,6 +32,7 @@ def main():
     verify_group = parser.add_mutually_exclusive_group()
     verify_group.add_argument('--verify', dest='verify', action='store_true', default=True, help='enable verification (default)')
     verify_group.add_argument('--no-verify', dest='verify', action='store_false', help='disable verification')
+    parser.add_argument('--resume', dest='resume', action='store_true', default=True, help='resume incomplete downloads (default)')
 
     args = parser.parse_args()
 

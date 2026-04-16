@@ -80,7 +80,7 @@ def split_file(input_file, out, target_size=None, start=0, chunk_copy_size=1024*
 
 class GFile:
     def __init__(self, file_or_url, progress=False, thread_num=4, chunk_size=1024*1024*10, chunk_copy_size=1024*1024, timeout=10,
-                 aria2=False, key=None, mute=False, verify=True, **kwargs) -> None:
+                 aria2=False, key=None, mute=False, verify=True, resume=True, **kwargs) -> None:
         self.file_or_url = file_or_url
         self.chunk_size = size_str_to_bytes(chunk_size)
         self.chunk_copy_size = size_str_to_bytes(chunk_copy_size)
@@ -97,6 +97,7 @@ class GFile:
         self.mute = mute
         self.verify = verify
         self.key = key
+        self.resume = resume
 
 
     def upload_chunk(self, chunk_no, chunks):
@@ -294,13 +295,29 @@ class GFile:
                 continue
 
             temp = filename + '.dl'
-            with self.session.get(download_url, stream=True) as r:
+            resume_pos = 0
+            if self.resume and Path(temp).exists():
+                resume_pos = Path(temp).stat().st_size
+
+            headers = {}
+            if resume_pos > 0:
+                headers['Range'] = f'bytes={resume_pos}-'
+
+            with self.session.get(download_url, stream=True, headers=headers) as r:
                 r.raise_for_status()
-                filesize = int(r.headers['Content-Length'])
+                if resume_pos > 0 and r.status_code == 206:
+                    filesize = resume_pos + int(r.headers['Content-Length'])
+                    if not self.mute:
+                        print(f'Resuming download from {bytes_to_size_str(resume_pos)} / {bytes_to_size_str(filesize)}')
+                else:
+                    filesize = int(r.headers['Content-Length'])
+                    resume_pos = 0  # server doesn't support range, start over
+
                 if self.progress:
                     desc = filename if len(filename) <= 20 else filename[0:11] + '..' + filename[-7:]
-                    self.pbar = tqdm(total=filesize, unit='B', unit_scale=True, unit_divisor=1024, desc=desc)
-                with open(temp, 'wb') as f:
+                    self.pbar = tqdm(total=filesize, initial=resume_pos, unit='B', unit_scale=True, unit_divisor=1024, desc=desc)
+                mode = 'ab' if resume_pos > 0 else 'wb'
+                with open(temp, mode) as f:
                     for chunk in r.iter_content(chunk_size=self.chunk_copy_size):
                         f.write(chunk)
                         if self.pbar: self.pbar.update(len(chunk))

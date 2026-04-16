@@ -27,7 +27,7 @@ $ gfile download https://66.gigafile.nu/0320-b36ec21d4a56b143537e12df7388a5367
 
 $ gfile -h
 usage: Gfile [-h] [--version] [-p] [-o OUTPUT] [--aria2 [ARIA2]] [-n THREAD_NUM] [-s CHUNK_SIZE] [-m CHUNK_COPY_SIZE] [-t TIMEOUT] [-k KEY]
-             [--mute] [--verify | --no-verify]
+             [--mute] [--verify | --no-verify] [--resume]
              {download,upload} file_or_url
 
 positional arguments:
@@ -55,6 +55,7 @@ options:
   --mute                mute initial message and warnings (only the final result and errors will be shown)
   --verify              enable verification (default)
   --no-verify           disable verification
+  --resume              resume incomplete downloads (default)
 ```
 
 ### Module
